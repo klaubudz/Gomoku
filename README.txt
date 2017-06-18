@@ -17,5 +17,6 @@ $ ghci budzynska.hs
 
 3. Format podania współrzędnych:
 wiersz kolumna
-np. 1 A
+np. 
+	1 A
 	19 R
