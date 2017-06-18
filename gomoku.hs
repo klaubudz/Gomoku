@@ -58,8 +58,8 @@ fromBoard :: (Int,Int) -> Board -> Maybe Sign
 fromBoard coord board 
 	| result == [] = Nothing
 	| otherwise = Just $ sign (head result)
-	where				-- result to wyciągnięty Field z tablicy
-		result = filter (\x -> (coordinate x) == coord) (fields board) -- tablica pusta lub jednoelementowa
+	where
+		result = filter (\x -> (coordinate x) == coord) (fields board)
 
 numToString :: Int -> String
 numToString a
@@ -81,14 +81,12 @@ addElem f board
 	| otherwise = Nothing 
 	where
 		(a,b) = coordinate f
---- test: printBoard (fromJust (addElem (Field (19,2) X) testb))
-
 
 -----------Ocenianie planszy-------------
 
 checkRight :: Board -> Field -> Sign -> Int -> Int
 checkRight board field s i
-	| (sign field) /= s || nextElem == Nothing = i 
+	| nextElem == Nothing || fromJust nextElem /= s = i 
 	| otherwise = checkRight board (Field (a, b+1) (fromJust nextElem)) s (i + 1) 
 	where
 		(a,b) = coordinate field 
@@ -96,7 +94,7 @@ checkRight board field s i
 
 checkDown :: Board -> Field -> Sign -> Int -> Int
 checkDown board field s i
-	| (sign field) /= s || nextElem == Nothing = i 
+	| nextElem == Nothing || fromJust nextElem /= s = i 
 	| otherwise = checkDown board (Field (a+1, b) (fromJust nextElem)) s (i + 1) 
 	where
 		(a,b) = coordinate field 
@@ -104,7 +102,7 @@ checkDown board field s i
 
 checkLeftCant :: Board -> Field -> Sign -> Int -> Int
 checkLeftCant board field s i
-	| (sign field) /= s || nextElem == Nothing = i 
+	| nextElem == Nothing || fromJust nextElem /= s = i 
 	| otherwise = checkLeftCant board (Field (a+1, b-1) (fromJust nextElem)) s (i + 1) 
 	where
 		(a,b) = coordinate field 
@@ -112,7 +110,7 @@ checkLeftCant board field s i
 
 checkRightCant :: Board -> Field -> Sign -> Int -> Int
 checkRightCant board field s i
-	| (sign field) /= s || nextElem == Nothing = i 
+	| nextElem == Nothing || fromJust nextElem /= s = i 
 	| otherwise = checkRightCant board (Field (a+1, b+1) (fromJust nextElem)) s (i + 1) 
 	where
 		(a,b) = coordinate field 
@@ -135,6 +133,7 @@ convertPoints a
 	| a == 3 = 40
 	| a == 4 = 100
 	| a == 5 = 1000
+	| otherwise = 0
 
 -----------Drzewo możliwych ruchów-----
 
@@ -155,10 +154,6 @@ generateBoards board field sign =
 	 			 addElem (Field (a+1, b+1) sign) board
 				]
 
---let b = generateBoards testb (Field (2,1) X) O
---let c = map (\x -> boardToString x) b
---putStr $ concat c
-
 generateTree :: Board -> Int -> Sign -> Tree Board
 generateTree board depth sign
 	| depth == 0 = Node board []
@@ -173,7 +168,6 @@ reverseSign sign
 	| sign == O = X
 
 ----------Min(max)----------------------
--- nie blokuje, tylko leci po wygraną, ale coś działa
 
 minMax :: Tree Board -> Sign -> Board
 minMax (Node board boards) s = 
@@ -183,7 +177,22 @@ minMax (Node board boards) s =
 		sortedList = sortBy (comparing snd) list
 		(bestBoard, rating) = last sortedList
 
------------Parser (interakcja z użytkownikiem)------
+-----------Sprawdzanie wygranej--------------------
+
+checkWin :: Board -> Sign -> Bool
+checkWin board s  
+		| length win /= 0 = True
+		| otherwise = False
+	where
+		b = map (\x -> (checkRight board x s 1)) filtered
+		c = map (\x -> (checkDown board x s 1)) filtered
+		d = map (\x -> (checkRightCant board x s 1)) filtered
+		e = map (\x -> (checkLeftCant board x s 1)) filtered
+		filtered = (filter (\x -> (sign x) == s ) (fields board)) -- zostawia tylko pola wybranego znaku
+		win = filter (\x -> x == 5) (b ++ c ++ d ++ e) -- zwróci tablicę z miejscami wystąpienia 5
+
+
+-----------Główna pętla gry, interakcja z użytkownikiem------
 
 parseInput :: String ->  Sign -> Maybe Field
 parseInput string sig
@@ -202,6 +211,12 @@ letterToNum :: String -> Int
 letterToNum string =
 	 (ord (head string)) - (ord ('A')) + 1
 
+endGame :: Sign -> IO ()
+endGame s 
+	| s == X = putStr("Gratulacje, wygrałeś!\n")
+	| otherwise = putStr("Wygrał komputer\n")
+
+
 gameBoard = Board 19 []
 
 gameLoop :: Board -> IO ()
@@ -209,12 +224,30 @@ gameLoop board = do
 	putStr ("Twój ruch - jesteś X\n")
 	printBoard board
 	line <- getLine
-	let a = fromJust $ parseInput line X  -- a to jest field którego musimy wstawić do planszy
-	let b = fromJust (addElem a board)
-	printBoard b
+	let maybeFieldToPut = parseInput line X
+	if maybeFieldToPut == Nothing then do
+		putStr("Niewłaściwe współrzedne, prawidłowy format to: numer litera\n")
+		gameLoop board
+	else do
+
+	let fieldToPut = fromJust maybeFieldToPut		
+	let maybeNewBoard = addElem fieldToPut board
+	if maybeNewBoard == Nothing then do
+		putStr("Przekroczony zakres planszy lub to miejsce jest już zajęte\n")
+		gameLoop board
+	else do
+
+	let newBoard = fromJust maybeNewBoard
+	printBoard newBoard
+	if (checkWin newBoard X) then do
+		endGame X
+	else do
 	putStr ("Ruch komputera\n")
-	let c = minMax (generateTree b 1 O) O
-	printBoard c
-	gameLoop c 
+	let boardAfterCompMove = minMax (generateTree newBoard 1 O) O
+	printBoard boardAfterCompMove
+	if (checkWin boardAfterCompMove O) then do
+		endGame O
+	else do
+	gameLoop boardAfterCompMove
 
-
+main = gameLoop gameBoard
